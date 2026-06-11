@@ -7,6 +7,7 @@ const userEmail = process.env.USER_EMAIL || 'bot-admin@example.com';
 const USER_AGENT = `WikiDexBot/1.0 (${userPoint}; ${userEmail})`;
 
 function getBaseValue(rarity) {
+  if (rarity === 'Artifact') return Math.floor(Math.random() * 500) + 1000;
   if (rarity === 'Legendary') return Math.floor(Math.random() * 200) + 400;
   if (rarity === 'Epic') return Math.floor(Math.random() * 100) + 200;
   if (rarity === 'Rare') return Math.floor(Math.random() * 50) + 100;
@@ -19,14 +20,40 @@ function getExponentialLexiconValue() {
   return 50 + Math.floor(skew * 151); 
 }
 
-async function getRandomWikiPage() {
+async function getPageViews(title) {
   try {
-    if (Math.random() < 0.10) {
-      const lex = config.getWeightedRandom(config.LEXICON_ENERGY);
-      const lexValue = getExponentialLexiconValue();
+    const cleanTitle = encodeURIComponent(title.replace(/ /g, '_'));
+    const url = `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/${cleanTitle}/monthly/2015070100/2030010100`;
+    
+    const res = await axios.get(url, { headers: { 'User-Agent': USER_AGENT } });
+    const items = res.data.items;
+    if (!items || items.length === 0) return 0;
+    
+    let total = 0;
+    for (let item of items) {
+      total += item.views;
+    }
+    return total;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function getRarityFromViews(views) {
+  for (let tier of config.RARITY_VIEWS) {
+      if (views >= tier.minViews) return tier.type;
+  }
+  return 'Common';
+}
+
+async function getRandomWikiPage(buffs, hasLexBuff) {
+  try {
+    if (Math.random() < 0.01) {
+      let lex = config.getWeightedRandom(config.LEXICON_ENERGY);
+      lex = config.processLexiconModifiers(lex, buffs, hasLexBuff);
       return {
         isLexiconCard: true, title: `${lex.name} Lexicon Card`, description: `A pure energy card radiating with ${lex.name} energy!`,
-        url: null, imageUrl: null, rarity: 'Energy', value: lexValue, quality: 1.0, lexiconDrop: lex
+        url: null, imageUrl: null, rarity: 'Energy', value: getExponentialLexiconValue(), quality: 1.0, lexiconDrop: lex
       };
     }
 
@@ -34,11 +61,13 @@ async function getRandomWikiPage() {
     const data = response.data;
     if (!data.title || data.type === 'no-title') return null;
 
-    const rarityDrop = config.getWeightedRandom(config.RARITY_WEIGHTS);
+    const views = await getPageViews(data.title);
+    const rarity = getRarityFromViews(views);
+
     return {
       isLexiconCard: false, title: data.title, description: data.extract || '...',
       url: data.content_urls.desktop.page, imageUrl: data.thumbnail ? data.thumbnail.source : null,
-      rarity: rarityDrop.type, value: getBaseValue(rarityDrop.type), quality: null
+      rarity: rarity, value: getBaseValue(rarity), quality: null, views: views
     };
   } catch (error) { return null; }
 }
@@ -49,52 +78,76 @@ async function getSpecificWikiPage(title) {
     const data = response.data;
     if (!data.title || data.type === 'no-title') return null;
 
-    const rarityDrop = config.getWeightedRandom(config.RARITY_WEIGHTS);
+    const views = await getPageViews(data.title);
+    const rarity = getRarityFromViews(views);
+
     return {
       isLexiconCard: false, title: data.title, description: data.extract || '...', url: data.content_urls ? data.content_urls.desktop.page : `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
-      imageUrl: data.thumbnail ? data.thumbnail.source : null, rarity: rarityDrop.type, value: getBaseValue(rarityDrop.type), quality: null
+      imageUrl: data.thumbnail ? data.thumbnail.source : null, rarity: rarity, value: getBaseValue(rarity), quality: null, views: views
     };
   } catch (error) { return null; } 
 }
 
-async function getWikiPack(size = 10, packType = 'Standard', userWishes = []) {
+async function getWikiPack(packType = 'Standard', userWishes = [], buffs = {wishMult: 1, enhancedWishMult: 1}, scrapTitles = [], hasLexBuff = false) {
+  let size = 10;
+  if (packType.startsWith('Mega')) size = 20;
+  if (packType === 'Energy') size = 3;
+  if (packType === 'Discount') size = 5;
+  if (packType === 'Scrap') size = 5;
+  if (packType === 'Wish') size = 1;
+
   const results = [];
   const stdWishes = userWishes.filter(w => w.isEnhanced === 0);
-  const enhWishes = userWishes.filter(w => w.isEnhanced === 1);
+  const enhWishes = userWishes.filter(w => w.isEnhanced > 0);
 
   for (let i = 0; i < size; i++) {
     let page = null;
     let isWishSpawn = false;
 
-    if (enhWishes.length > 0 && Math.random() < 0.01) {
-      const w = enhWishes[Math.floor(Math.random() * enhWishes.length)];
+    if (packType === 'Wish') {
+      if (userWishes.length === 0) return []; 
+      const w = userWishes[Math.floor(Math.random() * userWishes.length)];
       page = await getSpecificWikiPage(w.wikiTitle);
       isWishSpawn = true;
-    } else if (stdWishes.length > 0 && Math.random() < 0.005) {
-      const w = stdWishes[Math.floor(Math.random() * stdWishes.length)];
-      page = await getSpecificWikiPage(w.wikiTitle);
-      isWishSpawn = true;
+    } else if (packType === 'Scrap') {
+      if (scrapTitles.length > i) page = await getSpecificWikiPage(scrapTitles[i]);
+      else page = await getRandomWikiPage(buffs, hasLexBuff);
+    } else if (packType === 'Energy') {
+      let lex = config.getWeightedRandom(config.LEXICON_ENERGY);
+      lex = config.processLexiconModifiers(lex, buffs, hasLexBuff);
+      page = { isLexiconCard: true, title: `${lex.name} Lexicon Card`, description: `A pure energy card radiating with ${lex.name} energy!`, url: null, imageUrl: null, rarity: 'Energy', value: getExponentialLexiconValue(), quality: 1.0, lexiconDrop: lex };
+    } else {
+      if (enhWishes.length > 0 && Math.random() < (0.01 * buffs.enhancedWishMult)) {
+        const w = enhWishes[Math.floor(Math.random() * enhWishes.length)];
+        page = await getSpecificWikiPage(w.wikiTitle);
+        isWishSpawn = true;
+      } else if (stdWishes.length > 0 && Math.random() < (0.005 * buffs.wishMult)) {
+        const w = stdWishes[Math.floor(Math.random() * stdWishes.length)];
+        page = await getSpecificWikiPage(w.wikiTitle);
+        isWishSpawn = true;
+      }
+      if (!page) page = await getRandomWikiPage(buffs, hasLexBuff);
     }
 
-    if (!page) page = await getRandomWikiPage();
     if (!page) continue;
-
     if (isWishSpawn) page.isWishSpawn = true;
 
     if (!page.isLexiconCard) {
-      if (packType === 'Graded' && page.rarity === 'Common') {
+      if (packType === 'Discount') {
+        const highRarities = [{type: 'Rare', weight: 80}, {type: 'Epic', weight: 15}, {type: 'Legendary', weight: 4}, {type: 'Artifact', weight: 1}];
+        const forced = config.getWeightedRandom(highRarities).type;
+        page.rarity = forced; page.value = getBaseValue(forced);
+      } else if ((packType === 'Graded' || packType === 'Mega Graded') && page.rarity === 'Common') {
         page.rarity = 'Rare'; page.value = getBaseValue('Rare');
-      } else if (packType === 'Fixed' && i === 0 && !isWishSpawn) {
+      } else if ((packType === 'Fixed' || packType === 'Mega Fixed') && i === 0 && !isWishSpawn) {
         page.rarity = 'Legendary'; page.value = getBaseValue('Legendary');
       }
     }
     results.push(page);
-    await new Promise(resolve => setTimeout(resolve, 100));
   }
   
-  if (packType === 'Fixed') results.sort(() => Math.random() - 0.5);
+  if (packType === 'Fixed' || packType === 'Mega Fixed') results.sort(() => Math.random() - 0.5);
   return results;
 }
 
-// Exporting getBaseValue so index.js can use it for repairs
 module.exports = { getRandomWikiPage, getWikiPack, getSpecificWikiPage, getBaseValue };

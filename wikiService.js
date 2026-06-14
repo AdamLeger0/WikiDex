@@ -117,32 +117,45 @@ async function getWikiPack(packType = 'Standard', userWishes = [], buffs = {wish
       lex = config.processLexiconModifiers(lex, buffs, hasLexBuff);
       page = { isLexiconCard: true, title: `${lex.name} Lexicon Card`, description: `A pure energy card radiating with ${lex.name} energy!`, url: null, imageUrl: null, rarity: 'Energy', value: getExponentialLexiconValue(), quality: 1.0, lexiconDrop: lex };
     } else {
-      if (enhWishes.length > 0 && Math.random() < (0.01 * buffs.enhancedWishMult)) {
-        const w = enhWishes[Math.floor(Math.random() * enhWishes.length)];
-        page = await getSpecificWikiPage(w.wikiTitle);
-        isWishSpawn = true;
-      } else if (stdWishes.length > 0 && Math.random() < (0.005 * buffs.wishMult)) {
-        const w = stdWishes[Math.floor(Math.random() * stdWishes.length)];
-        page = await getSpecificWikiPage(w.wikiTitle);
-        isWishSpawn = true;
+      
+      let forcePremium = false;
+      if (packType === 'Discount') forcePremium = true;
+      if ((packType === 'Fixed' || packType === 'Mega Fixed') && i === 0) forcePremium = true;
+
+      if (!forcePremium) {
+          if (enhWishes.length > 0 && Math.random() < (0.01 * buffs.enhancedWishMult)) {
+            const w = enhWishes[Math.floor(Math.random() * enhWishes.length)];
+            page = await getSpecificWikiPage(w.wikiTitle);
+            isWishSpawn = true;
+          } else if (stdWishes.length > 0 && Math.random() < (0.005 * buffs.wishMult)) {
+            const w = stdWishes[Math.floor(Math.random() * stdWishes.length)];
+            page = await getSpecificWikiPage(w.wikiTitle);
+            isWishSpawn = true;
+          }
       }
-      if (!page) page = await getRandomWikiPage(buffs, hasLexBuff);
+
+      if (!page) {
+          if (forcePremium) {
+              // Guaranteed fetch from the high-view pool ensures views matching labels
+              const rTitle = config.PREMIUM_TITLES[Math.floor(Math.random() * config.PREMIUM_TITLES.length)];
+              page = await getSpecificWikiPage(rTitle);
+          } else {
+              page = await getRandomWikiPage(buffs, hasLexBuff);
+          }
+      }
     }
 
     if (!page) continue;
     if (isWishSpawn) page.isWishSpawn = true;
 
     if (!page.isLexiconCard) {
-      if (packType === 'Discount') {
-        const highRarities = [{type: 'Rare', weight: 80}, {type: 'Epic', weight: 15}, {type: 'Legendary', weight: 4}, {type: 'Artifact', weight: 1}];
-        const forced = config.getWeightedRandom(highRarities).type;
-        page.rarity = forced; page.value = getBaseValue(forced);
-      } else if ((packType === 'Graded' || packType === 'Mega Graded') && page.rarity === 'Common') {
-        page.rarity = 'Rare'; page.value = getBaseValue('Rare');
-      } else if ((packType === 'Fixed' || packType === 'Mega Fixed') && i === 0 && !isWishSpawn) {
-        page.rarity = 'Legendary'; page.value = getBaseValue('Legendary');
-      }
+        // If a graded pack rolls a common naturally, we swap it out for a premium fetch
+        if ((packType === 'Graded' || packType === 'Mega Graded') && (page.rarity === 'Common' || page.rarity === 'Uncommon')) {
+            const rTitle = config.PREMIUM_TITLES[Math.floor(Math.random() * config.PREMIUM_TITLES.length)];
+            page = await getSpecificWikiPage(rTitle) || page;
+        }
     }
+    
     results.push(page);
   }
   

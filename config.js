@@ -82,7 +82,6 @@ const BADGES_CONFIG = [
   { name: 'Science', baseCost: 8000, desc: [ "Wish Chance +15%", "Enhanced Wish Chance +15%", "Wish Cards Damage Immune", "Bonus: Wish Slots +4 & 1/100k Wish Pack Mutation" ] }
 ];
 
-// NEW: Categorized and scaled buff store
 const SHOP_BUFFS = {
   daily_1: { category: 'daily', label: '1 Day (1.5x)', name: 'Brew of the Chronicler - Vial', cost: 5000, mult: 1.5, ms: 86400000 },
   daily_3: { category: 'daily', label: '3 Days (2.0x)', name: 'Brew of the Chronicler - Flask', cost: 13500, mult: 2.0, ms: 259200000 },
@@ -93,6 +92,15 @@ const SHOP_BUFFS = {
   lex_4: { category: 'lex', label: '4 Hours', name: 'Elixir of Resonance - Flask', cost: 32000, ms: 14400000 },
   lex_12: { category: 'lex', label: '12 Hours', name: 'Elixir of Resonance - Carafe', cost: 85000, ms: 43200000 }
 };
+
+// NEW: Hand-picked pool of highly viewed pages to guarantee real rarities when a pack demands it
+const PREMIUM_TITLES = [
+  'United States', 'Earth', 'World War II', 'Donald Trump', 'Elon Musk', 'Elizabeth II', 'Cristiano Ronaldo', 'YouTube', 'Google',
+  'Albert Einstein', 'Michael Jackson', 'William Shakespeare', 'Adolf Hitler', 'New York City', 'Bitcoin', 'Lionel Messi', 'Taylor Swift',
+  'Periodic table', 'Leonardo da Vinci', 'Isaac Newton', 'Winston Churchill', 'Abraham Lincoln', 'George Washington', 'Nelson Mandela',
+  'Game of Thrones', 'Star Wars', 'Harry Potter', 'Avengers: Endgame', 'Internet', 'COVID-19 pandemic', 'India', 'United Kingdom',
+  'Eminem', 'Marilyn Monroe', 'Steve Jobs', 'Muhammad Ali', 'Mahatma Gandhi', 'Julius Caesar', 'Cleopatra', 'Napoleon'
+];
 
 function getWeightedRandom(array) {
   const totalWeight = array.reduce((sum, item) => sum + item.weight, 0);
@@ -192,6 +200,6 @@ function getPlayerBuffs(towerDataStr, badgeDataStr) {
 }
 
 module.exports = {
-  MAX_PACKS, MAX_ENERGY, WISH_MAX, PACK_SELL_PRICES, FORGE_COSTS, BASIC_LEXICON_EMOJI, ALEXANDRITE_EMOJI, PACK_WEIGHTS, RARITY_VIEWS, LEXICON_ENERGY, COLORS, BADGES_CONFIG, SHOP_BUFFS,
+  MAX_PACKS, MAX_ENERGY, WISH_MAX, PACK_SELL_PRICES, FORGE_COSTS, BASIC_LEXICON_EMOJI, ALEXANDRITE_EMOJI, PACK_WEIGHTS, RARITY_VIEWS, LEXICON_ENERGY, COLORS, BADGES_CONFIG, SHOP_BUFFS, PREMIUM_TITLES,
   getWeightedRandom, getConditionString, generateConditionFloat, getPlayerBuffs, getMaxQualityForTier, processLexiconModifiers
 };
